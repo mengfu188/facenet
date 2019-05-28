@@ -26,7 +26,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from scipy import misc
+import scipy.misc as misc
 import tensorflow as tf
 import numpy as np
 import sys
@@ -71,7 +71,7 @@ def main(args):
             for i in range(nrof_images):
                 print('%1d  ' % i, end='')
                 for j in range(nrof_images):
-                    dist = np.sqrt(np.sum(np.square(np.subtract(emb[i,:], emb[j,:]))))
+                    dist = np.sum(np.square(np.subtract(emb[i,:], emb[j,:])))
                     print('  %1.4f  ' % dist, end='')
                 print('')
             
@@ -123,7 +123,7 @@ def parse_arguments(argv):
     parser.add_argument('--margin', type=int,
         help='Margin for the crop around the bounding box (height, width) in pixels.', default=44)
     parser.add_argument('--gpu_memory_fraction', type=float,
-        help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
+        help='Upper bound on the amount of GPU memory that will be used by the process.', default=0.1)
     return parser.parse_args(argv)
 
 if __name__ == '__main__':

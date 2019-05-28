@@ -35,6 +35,7 @@ import facenet
 import align.detect_face
 import random
 from time import sleep
+import matplotlib.pyplot as plt
 
 def main(args):
     sleep(random.random())
@@ -45,15 +46,15 @@ def main(args):
     src_path,_ = os.path.split(os.path.realpath(__file__))
     facenet.store_revision_info(src_path, output_dir, ' '.join(sys.argv))
     dataset = facenet.get_dataset(args.input_dir)
-    
+
     print('Creating networks and loading parameters')
-    
+
     with tf.Graph().as_default():
         gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=args.gpu_memory_fraction)
         sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options, log_device_placement=False))
         with sess.as_default():
             pnet, rnet, onet = align.detect_face.create_mtcnn(sess, None)
-    
+
     minsize = 20 # minimum size of face
     threshold = [ 0.6, 0.7, 0.7 ]  # three steps's threshold
     factor = 0.709 # scale factor
@@ -61,7 +62,7 @@ def main(args):
     # Add a random key to the filename to allow alignment using multiple processes
     random_key = np.random.randint(0, high=99999)
     bounding_boxes_filename = os.path.join(output_dir, 'bounding_boxes_%05d.txt' % random_key)
-    
+
     with open(bounding_boxes_filename, "w") as text_file:
         nrof_images_total = 0
         nrof_successfully_aligned = 0
@@ -92,10 +93,24 @@ def main(args):
                         if img.ndim == 2:
                             img = facenet.to_rgb(img)
                         img = img[:,:,0:3]
-    
-                        bounding_boxes, _ = align.detect_face.detect_face(img, minsize, pnet, rnet, onet, threshold, factor)
+
+                        bounding_boxes, landmarks = align.detect_face.detect_face(img, minsize, pnet, rnet, onet, threshold, factor)
+                        # landmarks shape is (10,n)
+                        # 改成(n,10)
+                        # 左眼为landmark[0],landmark[5]
+                        # 有眼为landmark[1],landmark[6]
+                        # 鼻子为landmark[2],landmark[7]
+                        landmarks = np.transpose(landmarks, (1, 0))
+
                         nrof_faces = bounding_boxes.shape[0]
                         if nrof_faces>0:
+
+                            if args.brain:
+                                # import cv2
+                                ocd = os.path.join(output_dir+'_brain', cls.name)
+                                get_brain(img, landmarks, args.brain_size, ocd, filename)
+
+
                             det = bounding_boxes[:,0:4]
                             det_arr = []
                             img_size = np.asarray(img.shape)[0:2]
@@ -133,27 +148,71 @@ def main(args):
                         else:
                             print('Unable to align "%s"' % image_path)
                             text_file.write('%s\n' % (output_filename))
-                            
+
     print('Total number of images: %d' % nrof_images_total)
     print('Number of successfully aligned images: %d' % nrof_successfully_aligned)
-            
+
+
+def get_brain(img, landmarks, brain_size,output_class_dir, filename):
+    """
+    获取脑部地区
+    :param image: 图片
+    :param landmarks: 五个关键点
+    :param output_shape: 保存大小
+    :param output_class_dir:  保存路径
+    :param filename: 文件名，不带后缀
+    :return:
+    """
+    for landmark in landmarks:
+        # cv2.circle(img, (landmark[0],landmark[5]), 1, (255,0,0))
+        # cv2.circle(img, (landmark[1], landmark[6]), 1, (255, 0, 0))
+        # cv2.circle(img, (landmark[2], landmark[7]), 1, (255, 0, 0))
+        # cv2.circle(img, (landmark[3], landmark[8]), 1, (255, 0, 0))
+        # cv2.circle(img, (landmark[4], landmark[9]), 1, (255, 0, 0))
+        w = (landmark[1] - landmark[0]) * 2
+        h = landmark[8] - landmark[5]
+        # 左上角坐标，防止超界
+        pt1 = (max(int(landmark[0] - w), 0), max(int(landmark[5] - h * 3), 0))
+        # 右下角坐标，防止超界
+        pt2 = (min(int(landmark[1] + w), img.shape[1]), min(int(landmark[6]), img.shape[0]))
+        # cv2.rectangle(img, pt1, pt2, (255, 255, 255), 1)
+        # # 裁剪坐标为[y0:y1, x0:x1]
+        cropped = img[pt1[1]:pt2[1], pt1[0]:pt2[0]]
+        # 如果没有brain_size则按照原本的样子保存
+        if brain_size != None:
+            scaled = misc.imresize(cropped, (brain_size[0], brain_size[1]), interp='bilinear')
+        else:
+            scaled = cropped
+        if not os.path.exists(output_class_dir):
+            os.makedirs(output_class_dir)
+        output_brain = os.path.join(output_class_dir, filename + '.png')
+        plt.imsave(output_brain, scaled)
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
-    
+
     parser.add_argument('input_dir', type=str, help='Directory with unaligned images.')
     parser.add_argument('output_dir', type=str, help='Directory with aligned face thumbnails.')
     parser.add_argument('--image_size', type=int,
         help='Image size (height, width) in pixels.', default=182)
     parser.add_argument('--margin', type=int,
         help='Margin for the crop around the bounding box (height, width) in pixels.', default=44)
-    parser.add_argument('--random_order', 
+    parser.add_argument('--random_order',
         help='Shuffles the order of images to enable alignment using multiple processes.', action='store_true')
     parser.add_argument('--gpu_memory_fraction', type=float,
         help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
     parser.add_argument('--detect_multiple_faces', type=bool,
                         help='Detect and align multiple faces per image.', default=False)
+
+    # 提取脑部
+    parser.add_argument('--brain', action='store_true', default=False,
+                        help='提取脑部模式')
+    parser.add_argument('--brain_size', type=int, nargs=2,
+                        help='要保存的size')
+    parser.add_argument('--brain_margin', type=int, default=0,
+                        help='脑部区域扩充扩充')
     return parser.parse_args(argv)
 
 if __name__ == '__main__':
+    print(parse_arguments(sys.argv[1:]))
     main(parse_arguments(sys.argv[1:]))

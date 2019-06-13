@@ -96,16 +96,21 @@ def main(args):
 
                         bounding_boxes, landmarks = align.detect_face.detect_face(img, minsize, pnet, rnet, onet, threshold, factor)
                         # landmarks shape is (10,n)
-                        # 改成(n,10)
-                        # 左眼为landmark[0],landmark[5]
-                        # 有眼为landmark[1],landmark[6]
-                        # 鼻子为landmark[2],landmark[7]
-                        landmarks = np.transpose(landmarks, (1, 0))
+
 
                         nrof_faces = bounding_boxes.shape[0]
+                        # if nrof_faces==0 and args.save_all:
+                        #     scaled = misc.imresize(img, (args.image_size, args.image_size), interp='bilinear')
+                        #     misc.imsave(output_filename_n, scaled)
+
                         if nrof_faces>0:
 
                             if args.brain:
+                                # 改成(n,10)
+                                # 左眼为landmark[0],landmark[5]
+                                # 有眼为landmark[1],landmark[6]
+                                # 鼻子为landmark[2],landmark[7]
+                                landmarks = np.transpose(landmarks, (1, 0))
                                 # import cv2
                                 ocd = os.path.join(output_dir+'_brain', cls.name)
                                 get_brain(img, landmarks, args.brain_size, ocd, filename)
@@ -200,9 +205,11 @@ def parse_arguments(argv):
     parser.add_argument('--random_order',
         help='Shuffles the order of images to enable alignment using multiple processes.', action='store_true')
     parser.add_argument('--gpu_memory_fraction', type=float,
-        help='Upper bound on the amount of GPU memory that will be used by the process.', default=1.0)
+        help='Upper bound on the amount of GPU memory that will be used by the process.', default=0.1)
     parser.add_argument('--detect_multiple_faces', type=bool,
                         help='Detect and align multiple faces per image.', default=False)
+    parser.add_argument('--save_all', type=bool, default=False,
+                        help='save all image without photo have face', action='store_true')
 
     # 提取脑部
     parser.add_argument('--brain', action='store_true', default=False,
